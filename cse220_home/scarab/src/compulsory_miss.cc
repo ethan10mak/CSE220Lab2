@@ -19,10 +19,10 @@ int access_address(Addr address) {
 
     if (accessedLines.find(lineAddress) == accessedLines.end()) {
         accessedLines.insert(lineAddress);
-        return false;
+        return 0;
     }
     else
     {
-        return true;
+        return 1;
     }
 }

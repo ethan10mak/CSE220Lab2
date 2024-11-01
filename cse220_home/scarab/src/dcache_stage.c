@@ -47,10 +47,10 @@
 #include "prefetcher/pref_common.h"
 #include "prefetcher/stream_pref.h"
 #include "statistics.h"
-#include "compulsory_miss.h"
 
 #include "cmp_model.h"
 #include "prefetcher/l2l1pref.h"
+#include "compulsory_miss.h"
 
 /**************************************************************************************/
 /* Macros */
@@ -97,6 +97,8 @@ void init_dcache_stage(uns8 proc_id, const char* name) {
              sizeof(Dcache_Data), DCACHE_REPL);
   init_cache(&dc->dcacheFullyAssoc, "DCACHE_FULLY_ASSOC", DCACHE_SIZE, DCACHE_SIZE / DCACHE_LINE_SIZE, DCACHE_LINE_SIZE,
              sizeof(Dcache_Data), DCACHE_REPL);
+  //init_hash_table(&compulsory_miss_table, "compulsory miss table", 70000000, sizeof());
+  initialize_cache_tracker();
 
   reset_dcache_stage();
 
@@ -463,12 +465,13 @@ void update_dcache_stage(Stage_Data* src_sd) {
           if(!op->off_path) {
             STAT_EVENT(op->proc_id, DCACHE_MISS);
             STAT_EVENT(op->proc_id, DCACHE_MISS_ONPATH);
-            if (access_address(tempLineAddrWithOffset) == false){
-              STAT_EVENT(op->proc_id, DCACHE_MISS_ONPATH_COMPULSORY);
-            }
-            if (fullyAssocFill)
+            if (!(access_address(tempLineAddrWithOffset)))
             {
-              STAT_EVENT(op->proc_id, DCACHE_MISS_ONPATH_CONFLICT);
+            	STAT_EVENT(op->proc_id, DCACHE_MISS_ONPATH_COMPULSORY);
+            }
+            else if (fullyAssocFill)
+            {
+            	STAT_EVENT(op->proc_id, DCACHE_MISS_ONPATH_CONFLICT);
             }
             else
             {
@@ -529,12 +532,13 @@ void update_dcache_stage(Stage_Data* src_sd) {
           if(!op->off_path) {
             STAT_EVENT(op->proc_id, DCACHE_MISS);
             STAT_EVENT(op->proc_id, DCACHE_MISS_ONPATH);
-            if (access_address(tempLineAddrWithOffset) == false){
-              STAT_EVENT(op->proc_id, DCACHE_MISS_ONPATH_COMPULSORY);
-            }
-            if (fullyAssocFill)
+            if (!(access_address(tempLineAddrWithOffset)))
             {
-              STAT_EVENT(op->proc_id, DCACHE_MISS_ONPATH_CONFLICT);
+            	STAT_EVENT(op->proc_id, DCACHE_MISS_ONPATH_COMPULSORY);
+            }
+            else if (fullyAssocFill)
+            {
+            	STAT_EVENT(op->proc_id, DCACHE_MISS_ONPATH_CONFLICT);
             }
             else
             {
@@ -598,16 +602,17 @@ void update_dcache_stage(Stage_Data* src_sd) {
           if(!op->off_path) {
             STAT_EVENT(op->proc_id, DCACHE_MISS);
             STAT_EVENT(op->proc_id, DCACHE_MISS_ONPATH);
-            if (access_address(tempLineAddrWithOffset) == false){
-              STAT_EVENT(op->proc_id, DCACHE_MISS_ONPATH_COMPULSORY);
+            if (!(access_address(tempLineAddrWithOffset)))
+            {
+            	STAT_EVENT(op->proc_id, DCACHE_MISS_ONPATH_COMPULSORY);
             }
-            if (fullyAssocFill)
+            else if (fullyAssocFill)
             {
             	STAT_EVENT(op->proc_id, DCACHE_MISS_ONPATH_CONFLICT);
             }
             else
             {
-              STAT_EVENT(op->proc_id, DCACHE_MISS_ONPATH_CAPACITY);
+            	STAT_EVENT(op->proc_id, DCACHE_MISS_ONPATH_CAPACITY);
             }
             STAT_EVENT(op->proc_id, DCACHE_MISS_ST_ONPATH);
             op->oracle_info.dcmiss = TRUE;
@@ -751,7 +756,7 @@ Flag dcache_fill_line(Mem_Req* req) {
                                       &line_addr, &repl_line_addr);
 
 
-    if (!fullyAssocFill)
+    if (!(fullyAssocFill))
     {
 	    dataFullyAssoc = (Dcache_Data*)get_next_repl_line(&dc->dcacheFullyAssoc, dc->proc_id, req->addr,
 		                                    &repl_line_addr_fully_assoc, &repl_line_valid);
@@ -799,7 +804,7 @@ Flag dcache_fill_line(Mem_Req* req) {
                              0 :
                              cycle_count;
 
-  if (!fullyAssocFill)
+  if (!(fullyAssocFill))
   {
 	  dataFullyAssoc->dirty              = req->dirty_l0 ? TRUE : FALSE;
 	  dataFullyAssoc->prefetch           = TRUE;
@@ -823,7 +828,7 @@ Flag dcache_fill_line(Mem_Req* req) {
   if(req->type == MRT_DPRF) {  // cmp FIXME
     data->HW_prefetch   = TRUE;
     data->HW_prefetched = TRUE;
-    if (!fullyAssocFill)
+    if (!(fullyAssocFill))
     {
 	    dataFullyAssoc->HW_prefetch = TRUE;
 	    dataFullyAssoc->HW_prefetched= TRUE;
@@ -831,7 +836,7 @@ Flag dcache_fill_line(Mem_Req* req) {
   } else {
     data->HW_prefetch   = FALSE;
     data->HW_prefetched = FALSE;
-    if (!fullyAssocFill)
+    if (!(fullyAssocFill))
     {
 	    dataFullyAssoc->HW_prefetch = FALSE;
 	    dataFullyAssoc->HW_prefetched = FALSE;
@@ -855,7 +860,7 @@ Flag dcache_fill_line(Mem_Req* req) {
                                        (op->table_info->mem_type == MEM_LD);
       data->write_count[op->off_path] = data->write_count[op->off_path] +
                                         (op->table_info->mem_type == MEM_ST);
-	if (!fullyAssocFill)
+	if (!(fullyAssocFill))
 	{
 	      dataFullyAssoc->prefetch &= op->table_info->mem_type == MEM_PF ||
 		                op->table_info->mem_type == MEM_WH;
@@ -893,7 +898,7 @@ Flag dcache_fill_line(Mem_Req* req) {
     if (data->dirty && data->write_count[0] == 0)
     	data->write_count[0] = 1;
 
-    if (!fullyAssocFill)
+    if (!(fullyAssocFill))
     {
 	  if(dataFullyAssoc->dirty && dataFullyAssoc->write_count[0] == 0)
 	    dataFullyAssoc->write_count[0] = 1;

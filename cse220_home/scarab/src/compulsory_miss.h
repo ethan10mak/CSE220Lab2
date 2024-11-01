@@ -29,8 +29,6 @@
 #ifndef COMPULSORY_MISS_H
 #define COMPULSORY_MISS_H
 
-
-
 #ifdef __cplusplus
 extern "C" {
 #endif
